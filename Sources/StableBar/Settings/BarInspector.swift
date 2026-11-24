@@ -148,9 +148,13 @@ struct BarInspector: View {
                             isPresented: Binding(get: { resetting != nil }, set: { if !$0 { resetting = nil } }), presenting: resetting) { widget in
             Button("Reset") { editor.reset(widget) }
         } message: { widget in
-            Text(editor.definedInMainFile(widget)
-                 ? "Its style, role, rules, transition, tooltip, click action, format and workspace options go back to the defaults. What it shows and where it sits stay."
-                 : "Everything you changed goes back to how its package or imported file defines it. Where it sits and the screens it shows on stay.")
+            if case .quickToggles = widget.content, editor.definedInMainFile(widget) {
+                Text("Its tiles go back to the standard ones in their order, and its style, role, rules, transition, tooltip and click action to the defaults. Where it sits stays.")
+            } else {
+                Text(editor.definedInMainFile(widget)
+                     ? "Its style, role, rules, transition, tooltip, click action, format and workspace options go back to the defaults. What it shows and where it sits stay."
+                     : "Everything you changed goes back to how its package or imported file defines it. Where it sits and the screens it shows on stay.")
+            }
         }
     }
 
@@ -604,6 +608,11 @@ struct BarInspector: View {
                 SettingsGroup("Menu bar items") {
                     MenuBarItemsSettings(store: store, editor: editor, widget: widget, shown: widget.shownMenuBarItems, hidden: hidden)
                 }
+            case let .quickToggles(tiles):
+                SettingsGroup("Tiles", reset: tiles == QuickTile.standard ? nil : { editor.set(["tiles": .null], for: widget.id) }) {
+                    QuickTogglesSettings(editor: editor, widget: widget, tiles: tiles)
+                }
+                iconGroup(widget)
             case .appleMenu:
                 iconGroup(widget)
             default:
@@ -695,6 +704,8 @@ struct BarInspector: View {
             }
             if case .essentials? = widgetPopup(widget, store: store)?.layout.content {
                 SettingRow(title: "Click") { Text("Show details").foregroundStyle(.secondary) }
+            } else if case .quickToggles? = widgetPopup(widget, store: store)?.layout.content {
+                SettingRow(title: "Click") { Text("Show the toggles").foregroundStyle(.secondary) }
             } else {
                 clickRow(widget)
             }

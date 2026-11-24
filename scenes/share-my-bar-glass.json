@@ -1,0 +1,14 @@
+{
+  "$schema": "../scene.schema.json",
+  "configuration": {
+    "theme": { "id": "glass" },
+    "widgets": [
+      { "id": "apple", "type": "appleMenu", "position": "left" },
+      { "id": "plain", "type": "text", "text": "Liquid Glass", "position": "left" },
+      { "id": "date", "type": "clock", "format": "EEE d MMM", "position": "right" },
+      { "id": "time", "type": "clock", "format": "HH:mm", "position": "right" }
+    ]
+  },
+  "draw": "share",
+  "wallpaper": "wallpapers/clouds.png"
+}

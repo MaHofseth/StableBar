@@ -9,16 +9,25 @@ import UniformTypeIdentifiers
 final class BarShareWindow: NSObject, NSWindowDelegate {
     private(set) var window: NSWindow?
     private weak var store: BarStore?
+    /// The dock in the panel's place while a post is open in the browser, with the panel hidden.
+    private var dock: NSPanel?
 
     /// Opens Share My Bar on `screen`'s bar, or shows that bar in it when it's already open.
     func show(store: BarStore, screen: NSScreen) {
         self.store = store
         store.barEditing.end()
+        closeDock()
+        // The last share's images, which no post reads anymore. The first share finds no folder.
+        try? FileManager.default.removeItem(at: BarShare.pngFolder)
         let display = BarDisplay(screen: screen)
         let share = BarShare(store: store, display: display, screen: screen.frame.size, menuBar: screen.menuBarHeight,
                              wallpaper: NSWorkspace.shared.desktopImageURL(for: screen).flatMap(NSImage.init(contentsOf:)),
                              menuBarScheme: MenuBarAppearance.shared.schemes[display.id], defaults: .standard)
-        let host = NSHostingView(rootView: BarShareView(share: share) { [weak self] in self?.window?.performClose(nil) })
+        let host = NSHostingView(rootView: BarShareView(share: share, close: { [weak self] in self?.window?.performClose(nil) },
+                                                        tooltip: { [weak store] text, anchor, inside in
+            guard let store else { return }
+            store.popup.hover(inside, store: store, anchor: anchor) { store.popup.showTooltip(text, store: store, anchor: anchor) }
+        }, posted: { [weak self] in self?.stepAside(share) }))
         if window == nil {
             // A title bar with nothing in it keeps the panel resizable and closable with ⌘W, behind a borderless look.
             let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 460),
@@ -43,8 +52,68 @@ final class BarShareWindow: NSObject, NSWindowDelegate {
         window!.makeKeyAndOrderFront(nil)
     }
 
+    /// Shrinks the panel into the dock in its place while a post opens in the browser, to drag the image into the post
+    /// from.
+    private func stepAside(_ share: BarShare) {
+        let window = window!
+        let panel = window.frame
+        let host = NSHostingView(rootView: BarShareDock(share: share, expand: { [weak self] in self?.bringBack() },
+                                                       close: { [weak self] in self?.window?.close() }))
+        let size = host.fittingSize
+        let frame = NSRect(x: panel.midX - size.width / 2, y: panel.midY - size.height / 2, width: size.width, height: size.height)
+        // Non-activating, so the browser keeps the keyboard for the post.
+        let dock = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        dock.isOpaque = false
+        dock.backgroundColor = .clear
+        dock.hasShadow = true
+        dock.level = .floating
+        dock.hidesOnDeactivate = false
+        dock.isReleasedWhenClosed = false
+        dock.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        dock.contentView = host
+        closeDock()
+        self.dock = dock
+        let animation = store!.configuration!.bar(on: ScreenKind(BarDisplay(screen: window.screen!))).motion.popupAnimation
+        let shrinks = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        dock.alphaValue = 0
+        dock.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animation.duration
+            context.timingFunction = animation.timingFunction
+            dock.animator().alphaValue = 1
+            if shrinks { window.animator().setFrame(frame, display: true) }
+            window.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            Task { @MainActor in
+                // Show Share My Bar may have brought the panel back already.
+                if self?.dock === dock { window.orderOut(nil) }
+                // Back as it was, for Show Share My Bar.
+                window.setFrame(panel, display: false)
+                window.alphaValue = 1
+            }
+        }
+    }
+
+    /// Shows the panel again in place of the dock.
+    func bringBack() {
+        closeDock()
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func closeDock() {
+        guard let dock else { return }
+        self.dock = nil
+        NSAnimationContext.runAnimationGroup { _ in
+            dock.animator().alphaValue = 0
+        } completionHandler: {
+            Task { @MainActor in dock.close() }
+        }
+    }
+
     func windowWillClose(_ notification: Notification) {
         window = nil
+        closeDock()
         // Settings keeps StableBar in the Dock while it's open.
         if store?.widgetScripts.inspectorOpen != true { NSApplication.shared.setActivationPolicy(.accessory) }
     }
@@ -111,6 +180,54 @@ enum BarSharePreset: String, CaseIterable, Identifiable, Decodable {
         case .portrait: NSSize(width: 2160, height: 2700)
         }
     }
+
+    /// The tooltip: the shape and its size.
+    var help: String {
+        pixels.map { "\(title), \(Int($0.width)) × \(Int($0.height)) pixels" } ?? "The bar alone, on a strip of wallpaper"
+    }
+}
+
+/// A social network Share My Bar posts to, through its compose page, which takes the caption and the bar link but not
+/// the image.
+enum BarShareNetwork: CaseIterable, Identifiable {
+    case x, bluesky, threads, reddit
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .x: "X"
+        case .bluesky: "Bluesky"
+        case .threads: "Threads"
+        case .reddit: "Reddit"
+        }
+    }
+
+    /// The network's logo, or nil where the app's resources aren't bundled, as in tests.
+    var logo: NSImage? {
+        Bundle.main.url(forResource: "Share\(name)", withExtension: "pdf").flatMap(NSImage.init(contentsOf:))
+    }
+
+    /// The compose page, filled in with `caption` and `link`.
+    func compose(_ caption: String, link: URL?) -> URL {
+        let link = link?.absoluteString
+        let (page, fields): (String, [(String, String?)]) = switch self {
+        case .x: ("https://x.com/intent/tweet", [("text", caption), ("url", link)])
+        // Bluesky's takes only text, and links the address in it.
+        case .bluesky: ("https://bsky.app/intent/compose", [("text", [caption, link].compactMap { $0 }.joined(separator: " "))])
+        case .threads: ("https://www.threads.com/intent/post", [("text", caption), ("url", link)])
+        case .reddit: ("https://www.reddit.com/submit", [("title", caption), ("url", link)])
+        }
+        return URL(string: "\(page)?\(query(fields))")!
+    }
+}
+
+/// `fields` as a URL's query, leaving out those without a value.
+private func query(_ fields: [(String, String?)]) -> String {
+    // In a value, `&` and `=` would end it, and `+` would read as a space.
+    let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+"))
+    return fields.compactMap { name, value in value.map { "\(name)=\($0.addingPercentEncoding(withAllowedCharacters: allowed)!)" } }
+        .joined(separator: "&")
 }
 
 /// What Share My Bar draws: the screen, with or without the MacBook's notch, and the image's shape.
@@ -125,6 +242,8 @@ struct BarShareFormat: Equatable {
 @MainActor @Observable
 final class BarShare {
     static let badgeKey = "shareMyBarBadge"
+    static let captionKey = "shareMyBarCaption"
+    static let shortensKey = "shareMyBarShortensLink"
 
     /// The desktop as drawn, without the badge, `size` points large; `bottom` for a bar at the bottom.
     struct Drawing {
@@ -141,6 +260,16 @@ final class BarShare {
             compose()
         }
     }
+    /// What a post says before the bar link, remembered for the next share.
+    var caption: String {
+        didSet { defaults?.set(caption, forKey: Self.captionKey) }
+    }
+    /// Whether posts carry the bar link shortened by is.gd, remembered for the next share.
+    var shortens: Bool {
+        didSet { defaults?.set(shortens, forKey: Self.shortensKey) }
+    }
+    /// The bar link as is.gd shortened it, or why it couldn't. Nil while it's asked.
+    private(set) var shortLink: Result<URL, Error>?
     private(set) var drawn: Drawing?
     /// `drawn`'s image with the badge when it's on.
     private(set) var image: CGImage?
@@ -173,6 +302,64 @@ final class BarShare {
         self.menuBarScheme = menuBarScheme
         self.defaults = defaults
         badge = defaults?.object(forKey: Self.badgeKey) as? Bool ?? true
+        caption = defaults?.string(forKey: Self.captionKey) ?? "My macOS bar, made with StableBar. Try it on yours:"
+        shortens = defaults?.bool(forKey: Self.shortensKey) ?? false
+    }
+
+    /// The bar link, unless the bar can't be shared as one.
+    var linkURL: URL? { (try? link?.get())?.link }
+
+    /// The link a post carries: the bar link, shortened when `shortens` and is.gd could.
+    var postLink: URL? { shortens ? (try? shortLink?.get()) ?? linkURL : linkURL }
+
+    /// The caption and the link, as Copy Caption and the macOS share menu give them.
+    var postText: String { [caption, postLink?.absoluteString].compactMap { $0 }.joined(separator: " ") }
+
+    /// Asks is.gd for a short link to the bar link, when `shortens`.
+    func shorten() async {
+        shortLink = nil
+        guard shortens, let linkURL else { return }
+        let result: Result<URL, Error>
+        do { result = .success(try await Self.shortened(linkURL)) } catch { result = .failure(error) }
+        guard !Task.isCancelled else { return }
+        shortLink = result
+    }
+
+    /// `link` shortened by is.gd, whose short link leads to it with its fragment, which carries the bar.
+    nonisolated static func shortened(_ link: URL) async throws -> URL {
+        let request = URL(string: "https://is.gd/create.php?" + query([("format", "simple"), ("url", link.absoluteString)]))!
+        let (data, response) = try await URLSession.shared.data(from: request)
+        // The short link, or the error in words.
+        let reply = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (response as? HTTPURLResponse)?.statusCode == 200, let short = URL(string: reply) else {
+            throw CommandFailure(message: "is.gd: \(reply)")
+        }
+        return short
+    }
+
+    /// Where the shared images go, emptied each time Share My Bar opens.
+    static let pngFolder = FileManager.default.temporaryDirectory.appending(path: "Share My Bar", directoryHint: .isDirectory)
+
+    /// Writes `png` to a file of its own in `pngFolder`, for the share menu and a drag into a post: a later one mustn't
+    /// replace the image that an earlier share or drop still reads.
+    static func pngFile(_ png: Data) throws -> URL {
+        let folder = pngFolder.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: "StableBar.png")
+        try png.write(to: url)
+        return url
+    }
+
+    func copyImage() {
+        guard let png else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setData(png, forType: .png)
+    }
+
+    /// Copies the image, which a compose page can't take, and opens `network`'s with the caption and the link.
+    func post(to network: BarShareNetwork) {
+        copyImage()
+        NSWorkspace.shared.open(network.compose(caption, link: postLink))
     }
 
     /// `image` as PNG, at twice its size in points per inch, as Copy, Save and Share give it.
@@ -209,9 +396,11 @@ final class BarShare {
         let pixels = format.preset.pixels ?? NSSize(width: screen.width * 2, height: strip * 2)
         let size = NSSize(width: screen.width, height: screen.width * pixels.height / pixels.width)
         let dark = (configuration?.bar.appearance?.colorScheme ?? colorScheme) == .dark
+        let filled = CGSize(width: size.width, height: max(screen.height, size.height))
         let desktop = BarView(store: store, display: display, preview: true)
             .padding(bottom ? .bottom : .top, edge)
-            .frame(width: size.width, height: max(screen.height, size.height))
+            .frame(width: filled.width, height: filled.height)
+            .coordinateSpace(.named(GlassBackdrop.space))
             .overlay(alignment: .top) {
                 if let notch = display.notch {
                     UnevenRoundedRectangle(bottomLeadingRadius: 11, bottomTrailingRadius: 11)
@@ -230,6 +419,7 @@ final class BarShare {
             .clipped()
             .environment(\.fixedDate, fixedDate)
             .environment(\.menuBarScheme, menuBarScheme)
+            .environment(\.glassBackdrop, (wallpaper ?? OffscreenSnapshot.wallpaper).flatMap { Self.glassBackdrop($0, filling: filled) })
         let png = try? await OffscreenSnapshot.png(desktop, size: size, pixels: pixels, dark: dark, settle: .after(.seconds(1)),
                                                    name: "Share My Bar")
         guard !Task.isCancelled else { return }
@@ -279,6 +469,20 @@ final class BarShare {
         return context.makeImage()
     }
 
+    /// `wallpaper` blurred as Liquid Glass blurs it, for a wallpaper that fills `size` points.
+    private static func glassBackdrop(_ wallpaper: NSImage, filling size: CGSize) -> GlassBackdrop? {
+        let image = wallpaper.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        // One pixel to a point of the wallpaper as drawn: the blur leaves no finer detail.
+        let fill = max(size.width / wallpaper.size.width, size.height / wallpaper.size.height)
+        return image.flatMap { image in
+            let scale = wallpaper.size.width * fill / CGFloat(image.width)
+            let small = CIImage(cgImage: image).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            let blurred = small.clampedToExtent().applyingGaussianBlur(sigma: 2).cropped(to: small.extent)
+            return CIContext().createCGImage(blurred, from: small.extent)
+        }
+        .map { GlassBackdrop(image: NSImage(cgImage: $0, size: .zero), size: size) }
+    }
+
     /// Blurred at a quarter of the size, which looks the same behind the window for a sixteenth of the work.
     private static func blurred(_ image: CGImage) -> NSImage? {
         let small = CIImage(cgImage: image).transformed(by: CGAffineTransform(scaleX: 0.25, y: 0.25))
@@ -319,9 +523,16 @@ struct BarShareView: View {
     @Bindable var share: BarShare
     @State var showsLink = false
     @State var showsDetails = false
+    @State var showsPost = false
     var close: () -> Void = {}
+    /// Shows or hides StableBar's tooltip under a view, as the bar's widgets do.
+    var tooltip: (String, NSView, Bool) -> Void = { _, _, _ in }
+    /// Called once a post opens in the browser.
+    var posted: () -> Void = {}
     @State private var detailsHeight: CGFloat = 0
     @State private var copied = false
+    /// What the Share card's last action did, such as copying the image.
+    @State private var note: String?
     @State private var overImage = false
     @Environment(\.fixedDate) private var fixedDate
     @Environment(\.colorScheme) private var colorScheme
@@ -340,6 +551,7 @@ struct BarShareView: View {
         .padding(14)
         .overlay(alignment: .bottom) {
             if showsLink { linkCard.padding(.top, 56).padding(.bottom, 70) }
+            if showsPost { postCard.padding(.top, 56).padding(.bottom, 70) }
         }
         .background { backdrop.overlay(WindowDragArea()) }
         .ignoresSafeArea()
@@ -349,7 +561,11 @@ struct BarShareView: View {
         .frame(minWidth: 520, minHeight: 360)
         .task(id: share.format) { await share.draw(fixedDate: fixedDate, colorScheme: colorScheme) }
         .onChange(of: showsLink) { copied = false }
-        .onChange(of: share.format) { copied = false }
+        .onChange(of: showsPost) { note = nil }
+        .onChange(of: share.format) {
+            copied = false
+            note = nil
+        }
     }
 
     private var backdrop: some View {
@@ -378,11 +594,18 @@ struct BarShareView: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+        .modifier(BarTooltip(text: "The screen, its notch and the StableBar badge", hover: tooltip))
     }
 
     private var closeButton: some View {
         GlassCloseButton(title: "Close") {
-            if showsLink { showsLink = false } else { close() }
+            if showsLink {
+                showsLink = false
+            } else if showsPost {
+                showsPost = false
+            } else {
+                close()
+            }
         }
     }
 
@@ -402,6 +625,8 @@ struct BarShareView: View {
                             if let frame = share.badgeFrame { badgeSpot(frame, scale: fit.width / drawn.size.width) }
                         }
                         .onHover { overImage = $0 }
+                        // Into a post, whose page can't take the image from its link.
+                        .onDrag { share.png.flatMap { try? BarShare.pngFile($0) }.flatMap(NSItemProvider.init(contentsOf:)) ?? NSItemProvider() }
                 } else {
                     ProgressView().controlSize(.small)
                 }
@@ -433,8 +658,8 @@ struct BarShareView: View {
                                     .contentShape(Circle())
                             }
                             .buttonStyle(.plain)
+                            .modifier(BarTooltip(text: "Remove the StableBar badge", hover: tooltip))
                             .offset(x: -13, y: -13)
-                            .help("Remove the StableBar badge")
                             .accessibilityLabel("Remove StableBar Badge")
                         }
                 } else {
@@ -449,7 +674,7 @@ struct BarShareView: View {
                     }
                     .buttonStyle(.plain)
                     .fixedSize()
-                    .help("Add the StableBar badge")
+                    .modifier(BarTooltip(text: "Add the StableBar badge", hover: tooltip))
                     .frame(width: rect.width, height: rect.height, alignment: .trailing)
                 }
             }
@@ -463,19 +688,27 @@ struct BarShareView: View {
             ForEach(BarSharePreset.allCases) { preset in
                 Button(preset.label) { share.format.preset = preset }
                     .buttonStyle(GlassButtonStyle(selected: share.format.preset == preset))
+                    .modifier(BarTooltip(text: preset.help, hover: tooltip))
                     .accessibilityLabel(preset.title)
                     .accessibilityAddTraits(share.format.preset == preset ? .isSelected : [])
             }
             Rectangle().fill(.white.opacity(0.25)).frame(width: 1, height: 20).padding(.horizontal, 6)
-            tool("doc.on.doc", "Copy Image", action: copy).disabled(share.image == nil)
+            tool("doc.on.doc", "Copy Image", action: share.copyImage).disabled(share.image == nil)
             tool("square.and.arrow.down", "Save Image…", action: save).disabled(share.image == nil)
-            tool("link", "Bar Link", selected: showsLink) { showsLink.toggle() }.disabled(share.link == nil)
-            Button(action: shareBar) {
+            tool("link", "Bar Link", selected: showsLink) {
+                showsLink.toggle()
+                showsPost = false
+            }
+            .disabled(share.link == nil)
+            Button {
+                showsPost.toggle()
+                showsLink = false
+            } label: {
                 Label("Share", systemImage: "square.and.arrow.up").labelStyle(.titleAndIcon)
             }
             .buttonStyle(GlassButtonStyle(selected: true))
             .keyboardShortcut(.defaultAction)
-            .background(MenuAnchor(view: anchor))
+            .modifier(BarTooltip(text: "Post the image and the bar link", hover: tooltip))
             .disabled(share.image == nil)
             .padding(.leading, 4)
         }
@@ -489,7 +722,7 @@ struct BarShareView: View {
             Image(systemName: symbol).font(.system(size: 14, weight: .medium)).frame(width: 36)
         }
         .buttonStyle(GlassButtonStyle(selected: false, highlighted: selected, round: true))
-        .help(title)
+        .modifier(BarTooltip(text: title, hover: tooltip))
         .accessibilityLabel(title)
     }
 
@@ -522,11 +755,72 @@ struct BarShareView: View {
             case nil: EmptyView()
             }
         }
-        .padding(14)
-        .frame(width: 360, alignment: .leading)
-        .background(Color(white: 0.13).opacity(0.97), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14)))
-        .shadow(color: .black.opacity(0.4), radius: 18, y: 8)
+        .modifier(ShareCard())
+    }
+
+    /// The caption and the bar link, the networks that post them, and the macOS share menu, above the toolbar.
+    private var postCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Share", systemImage: "square.and.arrow.up").font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("Caption", text: $share.caption, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12.5))
+                    .lineLimit(2...4)
+                Group {
+                    if case let .failure(error)? = share.link {
+                        Text(errorMessage(error))
+                    } else if share.shortens, case let .failure(error)? = share.shortLink {
+                        Text("Couldn't shorten the link. \(errorMessage(error))")
+                    } else if share.shortens, share.shortLink == nil {
+                        Text("Shortening…")
+                    } else if let link = share.postLink {
+                        Text(link.absoluteString).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                .font(.system(size: 11.5))
+                .foregroundStyle(.white.opacity(0.55))
+                Toggle("Shorten with is.gd", isOn: $share.shortens)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 11.5))
+            }
+            .padding(10)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.12)))
+            // While the image redraws, the link is still the last screen's.
+            let ready = share.image != nil && !(share.shortens && share.linkURL != nil && share.shortLink == nil)
+            HStack(spacing: 6) {
+                ForEach(BarShareNetwork.allCases) { network in
+                    NetworkButton(network: network) { post(to: network) }
+                        .modifier(BarTooltip(text: "Copy the image and post on \(network.name)", hover: tooltip))
+                }
+            }
+            .disabled(!ready)
+            Label(note ?? "Each copies the image: paste it into the post with ⌘V, or drag it in from the preview.",
+                  systemImage: note == nil ? "info.circle" : "checkmark")
+                .font(.system(size: 11.5))
+                .foregroundStyle(.white.opacity(0.7))
+                .fixedSize(horizontal: false, vertical: true)
+            Rectangle().fill(.white.opacity(0.1)).frame(height: 1)
+            HStack(spacing: 6) {
+                Button("Copy Image") {
+                    share.copyImage()
+                    note = "Image copied"
+                }
+                .disabled(share.image == nil)
+                Button("Copy Caption") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(share.postText, forType: .string)
+                    note = "Caption and link copied"
+                }
+                .disabled(!ready)
+                Spacer(minLength: 0)
+                Button("More…", action: more).background(MenuAnchor(view: anchor)).disabled(!ready)
+            }
+            .buttonStyle(GlassButtonStyle(selected: false, size: .compact))
+        }
+        .modifier(ShareCard())
+        .task(id: share.shortens ? share.linkURL : nil) { await share.shorten() }
     }
 
     private func details(_ sharing: BarLink.Sharing) -> some View {
@@ -578,12 +872,6 @@ struct BarShareView: View {
         return CGSize(width: size.width * scale, height: size.height * scale)
     }
 
-    private func copy() {
-        guard let png = share.png else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setData(png, forType: .png)
-    }
-
     private func save() {
         guard let png = share.png else { return }
         let panel = NSSavePanel()
@@ -593,15 +881,156 @@ struct BarShareView: View {
         do { try png.write(to: url) } catch { NSAlert(error: error).runModal() }
     }
 
-    private func shareBar() {
+    private func post(to network: BarShareNetwork) {
+        share.post(to: network)
+        posted()
+    }
+
+    private func more() {
         guard let png = share.png else { return }
-        let url = FileManager.default.temporaryDirectory.appending(path: "StableBar.png")
         do {
-            try png.write(to: url)
-            NSSharingServicePicker(items: [url]).show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+            // With text, the menu leaves out only Add to Photos. With a URL, it would also leave out Notes and Freeform.
+            NSSharingServicePicker(items: [try BarShare.pngFile(png), share.postText]).show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
         } catch {
             NSAlert(error: error).runModal()
         }
+    }
+}
+
+/// A card above Share My Bar's toolbar.
+private struct ShareCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(14)
+            .frame(width: 360, alignment: .leading)
+            .background(Color(white: 0.13).opacity(0.97), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14)))
+            .shadow(color: .black.opacity(0.4), radius: 18, y: 8)
+    }
+}
+
+/// What Share My Bar shrinks into while a post is open in the browser: the image to drag into the post, the networks to
+/// post it on as well, and buttons back to the panel and to close.
+struct BarShareDock: View {
+    let share: BarShare
+    var expand: () -> Void = {}
+    var close: () -> Void = {}
+    @State private var dropped = false
+
+    var body: some View {
+        HStack(spacing: 14) {
+            if let image = share.image, let drawn = share.drawn {
+                let fit = BarShareView.fit(drawn.size, in: CGSize(width: 134, height: 48))
+                // The whole tile drags the image, which can be a thin strip.
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: fit.width, height: fit.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .frame(width: 150, height: 64)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                    .overlay(ImageDragSource(share: share) { dropped = true })
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Label(dropped ? "Added to your post" : "Drag the image into your post, or press ⌘V",
+                      systemImage: dropped ? "checkmark" : "arrow.up.forward")
+                    .font(.system(size: 12, weight: .semibold))
+                HStack(spacing: 2) {
+                    ForEach(BarShareNetwork.allCases) { network in
+                        NetworkButton(network: network) { share.post(to: network) }
+                    }
+                }
+            }
+            VStack(spacing: 4) {
+                GlassCloseButton(title: "Close", action: close)
+                Button(action: expand) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 11, weight: .bold)).frame(width: 28, height: 28)
+                }
+                .buttonStyle(GlassButtonStyle(selected: false, round: true, size: .compact))
+                .accessibilityLabel("Show Share My Bar")
+            }
+        }
+        .padding(12)
+        .background(Color(white: 0.13).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.14)))
+        .environment(\.colorScheme, .dark)
+        .foregroundStyle(.white)
+        .fixedSize()
+        .task(id: dropped) {
+            guard dropped else { return }
+            try? await Task.sleep(for: .seconds(1))
+            close()
+        }
+    }
+}
+
+/// A network's round button: its logo, or its name where the app's resources aren't bundled, as in tests.
+private struct NetworkButton: View {
+    let network: BarShareNetwork
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            if let logo = network.logo {
+                Image(nsImage: logo).renderingMode(.template).resizable().frame(width: 16, height: 16).frame(width: 40)
+            } else {
+                Text(network.name).padding(.horizontal, 12)
+            }
+        }
+        .buttonStyle(GlassButtonStyle(selected: false, round: true))
+        .accessibilityLabel("Post on \(network.name)")
+    }
+}
+
+/// Drags `share`'s image out as a PNG file, which a web page takes as an upload, and calls `dropped` once it lands.
+private struct ImageDragSource: NSViewRepresentable {
+    let share: BarShare
+    let dropped: () -> Void
+
+    final class DragView: NSView, NSDraggingSource {
+        let share: BarShare
+        var dropped: () -> Void = {}
+
+        init(share: BarShare) {
+            self.share = share
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { fatalError("DragView is created programmatically.") }
+
+        // The first click starts the drag, though the dock never makes StableBar active.
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func mouseDown(with event: NSEvent) {}
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let png = share.png, let file = try? BarShare.pngFile(png) else { return }
+            let item = NSPasteboardItem()
+            item.setString(file.absoluteString, forType: .fileURL)
+            // Beside the file, for a page that only reads image data.
+            item.setData(png, forType: .png)
+            let dragging = NSDraggingItem(pasteboardWriter: item)
+            let image = NSImage(data: png)!
+            let fit = BarShareView.fit(image.size, in: bounds.size)
+            dragging.setDraggingFrame(NSRect(x: bounds.midX - fit.width / 2, y: bounds.midY - fit.height / 2, width: fit.width, height: fit.height),
+                                      contents: image)
+            beginDraggingSession(with: [dragging], event: event, source: self)
+        }
+
+        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+            .copy
+        }
+
+        func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            if operation != [] { dropped() }
+        }
+    }
+
+    func makeNSView(context: Context) -> DragView { DragView(share: share) }
+
+    func updateNSView(_ view: DragView, context: Context) {
+        view.dropped = dropped
     }
 }
 

@@ -26,6 +26,8 @@ struct FillButton: View {
     static let sideWidth = 168.0
     let title: String
     let value: ConfigurationValue?
+    /// What `value` draws, for the swatch of a theme gradient, which `tokens` doesn't hold.
+    var drawn: ConfigurationValue?
     let tokens: [ThemeTokenColor]
     var allowsGradient = false
     var allowsNone = false
@@ -33,11 +35,13 @@ struct FillButton: View {
     let set: (ConfigurationValue) -> Void
 
     var body: some View {
+        // A theme color that isn't one color, such as Glass's popup gradient, can't be one side of a light and dark pair.
+        let isGradientToken = if case .token = FillChoice(value) { drawn?.isGradient == true } else { false }
         HStack(spacing: 6) {
             ForEach([false, true], id: \.self) { isDark in
-                SideButton(title: title, value: colorSide(dark: isDark, of: value), dark: isDark, tokens: tokens,
-                           allowsGradient: allowsGradient, allowsNone: allowsNone, arrowEdge: arrowEdge) {
-                    set(settingColorSide(dark: isDark, of: value, to: $0))
+                SideButton(title: title, value: colorSide(dark: isDark, of: value), drawn: isGradientToken ? drawn : nil, dark: isDark,
+                           tokens: tokens, allowsGradient: allowsGradient, allowsNone: allowsNone, arrowEdge: arrowEdge) {
+                    set(isGradientToken ? $0 : settingColorSide(dark: isDark, of: value, to: $0))
                 }
             }
         }
@@ -87,6 +91,8 @@ private struct SideButton: View {
     let title: String
     /// This side's value, or the whole value when it's a gradient or None.
     let value: ConfigurationValue?
+    /// What a theme gradient draws, for the swatch.
+    var drawn: ConfigurationValue?
     let dark: Bool
     let tokens: [ThemeTokenColor]
     var allowsGradient = false
@@ -102,7 +108,7 @@ private struct SideButton: View {
         let label = label(fill)
         Button { isPresented.toggle() } label: {
             HStack(spacing: 6) {
-                FillChip(fill: fill, tokens: tokens, width: 15, height: 15, cornerRadius: 4)
+                FillChip(fill: drawn.map(FillChoice.init) ?? fill, tokens: tokens, width: 15, height: 15, cornerRadius: 4)
                     .environment(\.colorScheme, dark ? .dark : .light)
                 label.lineLimit(1)
             }
@@ -130,7 +136,7 @@ private struct SideButton: View {
         case .none:
             return Text("None")
         case let .token(name):
-            return Text(tokens.first { $0.name == name }?.title ?? name) + detail("theme")
+            return Text(tokens.first { $0.name == name }?.title ?? friendly(name)) + detail(drawn == nil ? "theme color" : "theme gradient")
         case let .color(color):
             let rgba = color.rgba(dark: dark)
             let hex = Text(String(format: "#%06X", rgba >> 8))

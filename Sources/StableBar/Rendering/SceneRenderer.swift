@@ -387,9 +387,8 @@ enum SceneRenderer {
                 }
                 editor.showGroup(group)
             } else if let tab = scene.tab, tab.isBarTab {
-                editor.section = .widgets
-                editor.barItem = .bar
-                editor.barTab = tab == .placement ? .placement : .look
+                editor.section = .appearance
+                editor.appearanceTab = .bar
             } else {
                 switch scene.section ?? .general {
                 case .general: editor.section = .general
@@ -409,7 +408,7 @@ enum SceneRenderer {
                     editor.showCrashes()
                 }
             }
-            let waitsForThemes = scene.widget == nil && scene.section == .theme
+            let waitsForThemes = scene.widget == nil && (scene.section == .theme || scene.tab?.isBarTab == true)
             let waitsForCrashes = scene.widget == nil && scene.section == .crashes
             let library = store.packageLibrary
             // A package widget's Content tab loads the package's settings, which a busy Mac can take seconds to do.

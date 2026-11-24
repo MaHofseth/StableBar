@@ -234,8 +234,9 @@ enum HoverBackgroundRow {
 func removingReferences(to id: String, in document: [String: ConfigurationValue]) throws -> [String: ConfigurationValue] {
     var document = document
     var overrides = try document["widgetOverrides"]?.decoded([String: ConfigurationValue].self) ?? [:]
-    overrides.removeValue(forKey: id)
-    document["widgetOverrides"] = overrides.isEmpty ? nil : .object(overrides)
+    if overrides.removeValue(forKey: id) != nil {
+        document["widgetOverrides"] = overrides.isEmpty ? nil : .object(overrides)
+    }
     if let order = try document["widgetOrder"]?.decoded([String].self) {
         document["widgetOrder"] = .array(order.filter { $0 != id }.map(ConfigurationValue.string))
     }
@@ -250,7 +251,9 @@ func removingReferences(to id: String, in document: [String: ConfigurationValue]
     if let profiles = try document["profiles"]?.decoded([[String: ConfigurationValue]].self) {
         document["profiles"] = .array(try profiles.map { profile in
             var profile = profile
-            profile["configuration"] = .object(try removingReferences(to: id, in: (profile["configuration"] ?? .object([:])).decoded([String: ConfigurationValue].self)))
+            if let configuration = profile["configuration"] {
+                profile["configuration"] = .object(try removingReferences(to: id, in: configuration.decoded([String: ConfigurationValue].self)))
+            }
             return .object(profile)
         })
     }
@@ -356,6 +359,59 @@ func migrateEarlierSoundDetails(_ url: URL, pinned: String?, savedBy release: St
     }
     guard root["widgets"] != .array(widgets) else { return }
     root["widgets"] = .array(widgets)
+    try writeConfiguration(configurationData(root, editing: original, savedBy: release), to: url)
+}
+
+/// Turns the clock of a starter saved before 0.19.0, which opened Calendar on click, into one that opens its details
+/// popup, whose month calendar opens Calendar. A clock that also sets `details`, `open`, a menu or a popup keeps what it
+/// says.
+func migrateEarlierStarterClock(_ url: URL, pinned: String?, savedBy release: String? = AppVersion.release) throws {
+    if let pinned, compareReleases(pinned, "0.19.0") != .orderedAscending { return }
+    let original = try Data(contentsOf: url)
+    var root = try JSONDecoder().decode([String: ConfigurationValue].self, from: original)
+    guard case var .array(widgets) = root["widgets"] else { return }
+    let kept = ["details", "open", "menu", "popup", "popupName"]
+    for (index, value) in widgets.enumerated() {
+        guard case var .object(widget) = value, widget["type"] == .string("clock"), widget["onClick"] == .string("open -a Calendar"),
+              kept.allSatisfy({ (widget[$0] ?? .null) == .null }) else { continue }
+        widget["onClick"] = nil
+        widget["details"] = .bool(true)
+        widgets[index] = .object(widget)
+    }
+    guard root["widgets"] != .array(widgets) else { return }
+    root["widgets"] = .array(widgets)
+    try writeConfiguration(configurationData(root, editing: original, savedBy: release), to: url)
+}
+
+/// Turns the date and time that setup wrote as two clocks before 0.19.0, a `date` and a time-only `clock`, into the one
+/// clock it writes now, with the date and time apart. A pair given anything more, such as a style, or named anywhere but
+/// the widget list and its order, such as in an override or a screen's layout in the file or a profile, stays as it is.
+func migrateSetupDateAndTime(_ url: URL, pinned: String?, savedBy release: String? = AppVersion.release) throws {
+    if let pinned, compareReleases(pinned, "0.19.0") != .orderedAscending { return }
+    let original = try Data(contentsOf: url)
+    var root = try JSONDecoder().decode([String: ConfigurationValue].self, from: original)
+    let widgets = try root["widgets"]?.decoded([[String: ConfigurationValue]].self) ?? []
+    /// The format of the clock `id` as setup wrote it in `role`.
+    func setupFormat(_ id: String, _ role: String) -> String? {
+        guard let widget = widgets.first(where: { $0["id"] == .string(id) }), case let .string(format)? = widget["format"],
+              widget == ["id": .string(id), "type": .string("clock"), "position": .string("right"), "role": .string(role),
+                         "details": .bool(true), "format": .string(format)] else { return nil }
+        return format
+    }
+    var elsewhere = root
+    elsewhere["widgets"] = nil
+    elsewhere["widgetOrder"] = nil
+    guard let date = setupFormat("date", "secondary"), let time = setupFormat("clock", "time"),
+          try removingReferences(to: "date", in: elsewhere) == elsewhere, try removingReferences(to: "clock", in: elsewhere) == elsewhere
+    else { return }
+    var ids: [String] = []
+    root = try ConfigurationEdit(action: .remove, id: "date").applying(to: root, widgetIDs: &ids)
+    let clock: [String: ConfigurationValue] = ["id": .string("clock"), "type": .string("clock"), "position": .string("right"),
+                                               "details": .bool(true), "format": .string(date + "  " + time),
+                                               "layout": WidgetLayoutChoice.dateAndTimeApart.layout]
+    root["widgets"] = .array(try (root["widgets"]?.decoded([[String: ConfigurationValue]].self) ?? []).map { widget in
+        .object(widget["id"] == .string("clock") ? clock : widget)
+    })
     try writeConfiguration(configurationData(root, editing: original, savedBy: release), to: url)
 }
 

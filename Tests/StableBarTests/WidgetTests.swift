@@ -1147,6 +1147,9 @@ private func starterWithoutTheme() throws -> [String: ConfigurationValue] {
     let yabai = try SetupPreferences(placement: .belowMenuBar, workspaces: .yabai).applying(to: bundledStarter)
     #expect(!SetupPreferences.isFirstLaunchSpacesStarter(try document(yabai)))
     #expect(!SetupPreferences.isFirstLaunchSpacesStarter(try document(bundledStarter)))
+    var earlier = try document(spaces)
+    earlier["widgets"] = .array(SetupPreferences.earlierBelowMenuBarStarter.map(ConfigurationValue.object))
+    #expect(SetupPreferences.isFirstLaunchSpacesStarter(earlier))
     // Setup starts any of them from Everyday, whichever manager the first launch found.
     let aerospace = try SetupPreferences(placement: .belowMenuBar, workspaces: .aerospace).applying(to: bundledStarter)
     #expect(SetupPreferences.isFirstLaunchStarter(try document(aerospace)))
@@ -1211,8 +1214,7 @@ private func starterWithoutTheme() throws -> [String: ConfigurationValue] {
     await session.place(.top)
     #expect(session.preferences.widgetSets == [.appleMenu, .appMenu(expandsOnHover: false), nowPlaying, weather, .sound, .batteryLevel,
                                                .dateAndTime, .menuBarItems, .quickToggles])
-    #expect(store.configuration?.widgets.map(\.id) == ["apple", "app-menu", "sound", "battery", "date", "clock", "menu-bar-items",
-                                                       "quick-toggles"])
+    #expect(store.configuration?.widgets.map(\.id) == ["apple", "app-menu", "sound", "battery", "clock", "menu-bar-items", "quick-toggles"])
 }
 
 /// An unchanged starter, on the top edge or below the menu bar, becomes exactly the preset's bar where the bar sits:
@@ -1409,8 +1411,8 @@ func setupKeepsStarterWidgetsChangedByOverrides(inProfile: Bool) throws {
     #expect(document["workspaceSource"] == nil)
 }
 
-/// On a bar you changed, a preset's widgets replace yours: those it doesn't have leave. A clock of your own keeps out
-/// the preset's date and time, so the bar doesn't show the date twice; beside the preset's own time, the date joins it.
+/// On a bar you changed, a preset's widgets replace yours: those it doesn't have leave. A clock of your own stays in
+/// place of the preset's.
 @Test func setupPresetsReplaceTheWidgetsOfAChangedBar() throws {
     func bar(clock: String) -> Data {
         Data(#"""
@@ -1429,10 +1431,24 @@ func setupKeepsStarterWidgetsChangedByOverrides(inProfile: Bool) throws {
                                                 "quick-toggles"])
     #expect(configuration.widgets.first { $0.id == "clock" }?.content == .clock(format: "EEE d MMM  HH:mm"))
     #expect(configuration.workspaceSource == .spaces)
-    let time = #"{"id":"clock","type":"clock","position":"right","format":"\#(SetupPreferences.timeFormat())","role":"time","details":true}"#
-    #expect(try widgetIDs(developer.applying(to: bar(clock: time)))
-            == ["apple", "workspaces", "app-menu", "system-monitor", "disk", "sound", "battery", "date", "clock", "menu-bar-items",
-                "quick-toggles"])
+}
+
+/// Setup gives a widget only a display that Settings names, so Settings never calls one of its layouts custom.
+@Test func setupWidgetsUseDisplaysThatSettingsOffers() {
+    let sets = SetupPreferences.Preset.allCases.flatMap { preset in
+        [SetupPreferences.Placement.top, .belowMenuBar].flatMap { preset.preferences(workspaces: .spaces, placement: $0).widgetSets }
+    }
+    for widget in sets.flatMap(\.widgets) + SetupPreferences.belowMenuBarStarter {
+        guard let layout = widget["layout"] else { continue }
+        switch widget["type"] {
+        case .string("clock"): #expect(WidgetLayoutChoice.clock.contains { $0.layout == layout })
+        case .string("calendar"): #expect(WidgetLayoutChoice.calendar.contains { $0.layout == layout })
+        case .string("system"): #expect(WidgetMetricDisplay.current(layout, sources: WidgetSystemMetrics.current(layout).sources) != .custom)
+        case .string("battery"): #expect(WidgetMetricDisplay.current(layout, sources: ["percent"]) != .custom)
+        case .string("disk"): #expect(WidgetMetricDisplay.current(layout, sources: ["disk"]) != .custom)
+        default: Issue.record("Settings offers no display for \(widget)")
+        }
+    }
 }
 
 /// The preset's widgets a changed bar lacks join the ones it keeps in the preset's order: Dashboard has Sound after Battery.
@@ -1440,8 +1456,7 @@ func setupKeepsStarterWidgetsChangedByOverrides(inProfile: Bool) throws {
     let bar = Data(#"{ "widgets": [{"id":"battery","type":"battery","position":"right"}] }"#.utf8)
     let dashboard = SetupPreferences.Preset.dashboard.preferences(workspaces: .spaces, placement: .current)
     #expect(try widgetIDs(dashboard.applying(to: bar))
-            == ["apple", "workspaces", "app-menu", "system-monitor", "battery", "sound", "date", "clock", "menu-bar-items",
-                "quick-toggles"])
+            == ["apple", "workspaces", "app-menu", "system-monitor", "battery", "sound", "clock", "menu-bar-items", "quick-toggles"])
 }
 
 @Test func setupReenablesMatchingWidgetsAndKeepsConflictingIDs() throws {

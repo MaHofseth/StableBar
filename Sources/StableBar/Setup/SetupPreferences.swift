@@ -25,8 +25,7 @@ struct SetupPreferences: Equatable, Codable, Sendable {
             case available, added, disabled, conflict
         }
 
-        /// A set of several widgets, such as the date and the time, conflicts when one of them does, so it goes on the
-        /// bar whole or not at all.
+        /// A set of several widgets conflicts when one of them does, so it goes on the bar whole or not at all.
         func state(in configuration: Configuration) -> State {
             if case let .store(id, _, _, _) = self {
                 guard let widget = configuration.widgets.first(where: { $0.id == id }) else { return .available }
@@ -86,207 +85,35 @@ struct SetupPreferences: Equatable, Codable, Sendable {
             case let .workspaces(_, showsApps):
                 json = showsApps ? #"[{ "id": "workspaces", "type": "workspaces", "position": "left" }]"#
                     : #"[{ "id": "workspaces", "type": "workspaces", "position": "left", "workspace": { "showApps": false } }]"#
-            case .systemMeters: json = #"""
-                [
-                  {
-                    "id": "system-monitor", "type": "system", "position": "right", "details": true,
-                    "layout": {
-                      "type": "row", "style": { "spacing": 14 },
-                      "children": [
-                        {
-                          "type": "row", "style": { "spacing": 6 },
-                          "children": [
-                            { "type": "text", "text": "CPU", "role": "key", "style": { "fontWeight": "medium" } },
-                            { "type": "field", "field": "text", "alignment": "trailing", "style": { "minWidth": 37 } },
-                            { "type": "progress", "source": "cpu", "height": 4, "role": "meter", "style": { "width": 32 } }
-                          ]
-                        },
-                        {
-                          "type": "row", "style": { "spacing": 6 },
-                          "children": [
-                            { "type": "text", "text": "MEM", "role": "key", "style": { "fontWeight": "medium" } },
-                            {
-                              "type": "row", "alignment": "trailing", "style": { "spacing": 0, "minWidth": 37 },
-                              "children": [{ "type": "field", "field": "memory" }, { "type": "text", "text": "%" }]
-                            },
-                            { "type": "progress", "source": "memory", "height": 4, "role": "meter", "style": { "width": 32 } }
-                          ]
-                        }
-                      ]
-                    }
-                  }
-                ]
-                """#
-            case .diskMeter: json = #"""
-                [
-                  {
-                    "id": "disk", "type": "disk", "position": "right", "details": true,
-                    "layout": {
-                      "type": "row", "style": { "spacing": 6 },
-                      "children": [
-                        { "type": "text", "text": "DISK", "role": "key", "style": { "fontWeight": "medium" } },
-                        { "type": "field", "field": "text", "alignment": "trailing", "style": { "minWidth": 37 } },
-                        { "type": "progress", "source": "disk", "height": 4, "role": "meter", "style": { "width": 32 } }
-                      ]
-                    }
-                  }
-                ]
-                """#
-            case .batteryLevel: json = #"""
-                [
-                  {
-                    "id": "battery", "type": "battery", "position": "right", "details": true,
-                    "layout": { "type": "row", "children": [{ "type": "battery" }, { "type": "field", "field": "text" }] }
-                  }
-                ]
-                """#
-            case .systemRings: json = #"""
-                [
-                  {
-                    "id": "system-monitor", "type": "system", "position": "right", "details": true,
-                    "layout": {
-                      "type": "row", "style": { "spacing": 10 },
-                      "children": [
-                        {
-                          "type": "row", "style": { "spacing": 5 },
-                          "children": [
-                            {
-                              "type": "ring", "source": "cpu", "lineWidth": 2, "style": { "iconSize": 18, "background": "@token.track" },
-                              "children": [{ "type": "symbol", "name": "cpu", "style": { "iconSize": 8.5 } }]
-                            },
-                            { "type": "field", "field": "text" }
-                          ]
-                        },
-                        {
-                          "type": "row", "style": { "spacing": 5 },
-                          "children": [
-                            {
-                              "type": "ring", "source": "memory", "lineWidth": 2, "style": { "iconSize": 18, "background": "@token.track" },
-                              "children": [{ "type": "symbol", "name": "memorychip", "style": { "iconSize": 8.5 } }]
-                            },
-                            {
-                              "type": "row", "style": { "spacing": 0 },
-                              "children": [{ "type": "field", "field": "memory" }, { "type": "text", "text": "%" }]
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  }
-                ]
-                """#
-            case .batteryRing: json = #"""
-                [
-                  {
-                    "id": "battery", "type": "battery", "position": "right", "details": true,
-                    "layout": {
-                      "type": "row", "style": { "spacing": 5 },
-                      "children": [
-                        {
-                          "type": "ring", "source": "percent", "lineWidth": 2, "style": { "iconSize": 18, "background": "@token.track" },
-                          "children": [{ "type": "symbol", "source": "icon", "style": { "iconSize": 8.5 } }]
-                        },
-                        { "type": "field", "field": "text" }
-                      ]
-                    }
-                  }
-                ]
-                """#
+            case .systemMeters:
+                return [["id": .string("system-monitor"), "type": .string("system"), "position": .string("right"), "details": .bool(true),
+                         "layout": WidgetMetricDisplay.labelValueMeter.layout(for: ["cpu", "memory"])!]]
+            case .diskMeter:
+                return [["id": .string("disk"), "type": .string("disk"), "position": .string("right"), "details": .bool(true),
+                         "layout": WidgetMetricDisplay.labelValueMeter.layout(for: ["disk"])!]]
+            case .batteryLevel:
+                return [["id": .string("battery"), "type": .string("battery"), "position": .string("right"), "details": .bool(true),
+                         "layout": WidgetMetricDisplay.standard.layout(for: ["percent"])!]]
+            case .systemRings:
+                return [["id": .string("system-monitor"), "type": .string("system"), "position": .string("right"), "details": .bool(true),
+                         "layout": WidgetMetricDisplay.ring.layout(for: ["cpu", "memory"])!]]
+            case .batteryRing:
+                return [["id": .string("battery"), "type": .string("battery"), "position": .string("right"), "details": .bool(true),
+                         "layout": WidgetMetricDisplay.ring.layout(for: ["percent"])!]]
             case .privacy: json = #"[{ "id": "privacy", "type": "privacy", "position": "right" }]"#
             case .dateAndTime, .dayAndTime:
                 // The Mac's own date order and hour cycle, as the starter's clock has.
-                return [
-                    ["id": .string("date"), "type": .string("clock"), "position": .string("right"), "role": .string("secondary"), "details": .bool(true),
-                     "format": .string(SetupPreferences.dateFormat(self == .dateAndTime ? "EEEdMMM" : "EEEd", or: self == .dateAndTime ? "EEE d MMM" : "EEE d"))],
-                    ["id": .string("clock"), "type": .string("clock"), "position": .string("right"), "role": .string("time"), "details": .bool(true),
-                     "format": .string(SetupPreferences.timeFormat())]
-                ]
+                let format = self == .dateAndTime ? SetupPreferences.clockFormat()
+                    : SetupPreferences.dateFormat("EEEd", or: "EEE d") + "  " + SetupPreferences.timeFormat()
+                return [["id": .string("clock"), "type": .string("clock"), "position": .string("right"), "format": .string(format),
+                         "details": .bool(true), "layout": WidgetLayoutChoice.dateAndTimeApart.layout]]
             case .store: return []
-            case .system: json = #"""
-                [
-                  {
-                    "id": "system-monitor", "type": "system", "position": "right",
-                    "layout": {
-                      "type": "row",
-                      "children": [
-                        { "type": "symbol", "name": "cpu" },
-                        { "type": "field", "field": "text" },
-                        { "type": "symbol", "name": "memorychip" },
-                        {
-                          "type": "row", "style": { "spacing": 0 },
-                          "children": [{ "type": "field", "field": "memory" }, { "type": "text", "text": "%" }]
-                        }
-                      ]
-                    },
-                    "popup": {
-                      "style": { "width": 280 },
-                      "layout": {
-                        "type": "column",
-                        "children": [
-                          { "type": "text", "text": "System", "role": "heading" },
-                          { "type": "graph", "height": 36 },
-                          {
-                            "type": "row",
-                            "children": [
-                              { "type": "text", "text": "CPU", "role": "key" },
-                              { "type": "field", "field": "cpu", "alignment": "trailing", "role": "value" },
-                              { "type": "text", "text": "%", "role": "value", "style": { "width": 14 } }
-                            ]
-                          },
-                          { "type": "progress", "source": "cpu", "height": 3, "role": "meter" },
-                          {
-                            "type": "row",
-                            "children": [
-                              { "type": "text", "text": "Memory", "role": "key" },
-                              { "type": "field", "field": "memory", "alignment": "trailing", "role": "value" },
-                              { "type": "text", "text": "%", "role": "value", "style": { "width": 14 } }
-                            ]
-                          },
-                          { "type": "progress", "source": "memory", "height": 3, "role": "meter" },
-                          { "type": "divider", "role": "separator" },
-                          { "type": "text", "text": "Activity Monitor", "open": "com.apple.ActivityMonitor", "role": "button" }
-                        ]
-                      }
-                    }
-                  }
-                ]
-                """#
-            case .meetings: json = #"""
-                [
-                  {
-                    "id": "meeting", "type": "calendar", "position": "center", "priority": 1, "details": true,
-                    "layout": {
-                      "type": "row", "hideWhen": { "field": "phase", "equals": "none" }, "style": { "spacing": 6 },
-                      "children": [
-                        { "type": "symbol", "name": "calendar", "hideWhen": { "field": "phase", "equals": "live" } },
-                        {
-                          "type": "symbol", "name": "circle.fill", "showWhen": { "field": "phase", "equals": "live" },
-                          "style": { "iconSize": 7, "foreground": { "light": "#28a745", "dark": "#30d158" } }
-                        },
-                        { "type": "field", "field": "title", "style": { "maxWidth": 170 } },
-                        { "type": "field", "field": "start", "role": "secondary", "showWhen": { "field": "phase", "equals": "later" } },
-                        {
-                          "type": "row", "showWhen": [{ "field": "phase", "equals": "soon" }, { "field": "phase", "equals": "now" }],
-                          "style": { "spacing": 3, "foreground": "@token.warning" },
-                          "children": [{ "type": "text", "text": "in" }, { "type": "field", "field": "minutes" }, { "type": "text", "text": "min" }]
-                        },
-                        {
-                          "type": "row", "showWhen": { "field": "phase", "equals": "live" }, "role": "secondary", "style": { "spacing": 3 },
-                          "children": [{ "type": "field", "field": "minutes" }, { "type": "text", "text": "min left" }]
-                        },
-                        {
-                          "type": "text", "text": "Join", "hideWhenEmpty": "joinCommand", "hideWhen": { "field": "phase", "equals": "later" },
-                          "onClickField": "joinCommand",
-                          "style": {
-                            "background": { "light": "#34c75938", "dark": "#30d15847" }, "cornerRadius": 8,
-                            "paddingHorizontal": 8, "paddingVertical": 2, "fontWeight": "semibold"
-                          }
-                        }
-                      ]
-                    }
-                  }
-                ]
-                """#
+            case .system:
+                return [["id": .string("system-monitor"), "type": .string("system"), "position": .string("right"), "details": .bool(true),
+                         "layout": WidgetMetricDisplay.standard.layout(for: ["cpu", "memory"])!]]
+            case .meetings:
+                return [["id": .string("meeting"), "type": .string("calendar"), "position": .string("center"), "priority": .number(1),
+                         "details": .bool(true), "layout": WidgetLayoutChoice.countdownAndJoin.layout]]
             case .battery: json = #"[{ "id": "battery", "type": "battery", "position": "right", "details": true }]"#
             case .sound: json = #"[{ "id": "sound", "type": "audio", "position": "right", "details": true }]"#
             case .menuBarItems: json = #"[{ "id": "menu-bar-items", "type": "menuBarItems", "position": "right" }]"#
@@ -405,7 +232,7 @@ struct SetupPreferences: Equatable, Codable, Sendable {
           { "id": "apple", "type": "appleMenu", "position": "left" },
           { "id": "app-menu", "type": "appMenu", "position": "left" },
           { "id": "sound", "type": "audio", "position": "right", "details": true },
-          { "id": "clock", "type": "clock", "position": "right", "format": "EEE d MMM  HH:mm", "onClick": "open -a Calendar" },
+          { "id": "clock", "type": "clock", "position": "right", "format": "EEE d MMM  HH:mm", "details": true },
           { "id": "menu-bar-items", "type": "menuBarItems", "position": "right" },
           { "id": "quick-toggles", "type": "quickToggles", "position": "right" }
         ]
@@ -507,12 +334,69 @@ struct SetupPreferences: Equatable, Codable, Sendable {
     /// The starter bar below the macOS menu bar, which already shows the menus, the clock and the menu bar items.
     static let belowMenuBarStarter = WidgetSet.workspaces(.spaces).widgets + WidgetSet.system.widgets + WidgetSet.sound.widgets
 
+    /// The starter below the menu bar as 0.18.0 wrote it, once launch gives its Sound the details: its System widget
+    /// drew a popup of its own instead of the details.
+    static let earlierBelowMenuBarStarter = WidgetSet.workspaces(.spaces).widgets + widgets(#"""
+        [
+          {
+            "id": "system-monitor", "type": "system", "position": "right",
+            "layout": {
+              "type": "row",
+              "children": [
+                { "type": "symbol", "name": "cpu" },
+                { "type": "field", "field": "text" },
+                { "type": "symbol", "name": "memorychip" },
+                {
+                  "type": "row", "style": { "spacing": 0 },
+                  "children": [{ "type": "field", "field": "memory" }, { "type": "text", "text": "%" }]
+                }
+              ]
+            },
+            "popup": {
+              "style": { "width": 280 },
+              "layout": {
+                "type": "column",
+                "children": [
+                  { "type": "text", "text": "System", "role": "heading" },
+                  { "type": "graph", "height": 36 },
+                  {
+                    "type": "row",
+                    "children": [
+                      { "type": "text", "text": "CPU", "role": "key" },
+                      { "type": "field", "field": "cpu", "alignment": "trailing", "role": "value" },
+                      { "type": "text", "text": "%", "role": "value", "style": { "width": 14 } }
+                    ]
+                  },
+                  { "type": "progress", "source": "cpu", "height": 3, "role": "meter" },
+                  {
+                    "type": "row",
+                    "children": [
+                      { "type": "text", "text": "Memory", "role": "key" },
+                      { "type": "field", "field": "memory", "alignment": "trailing", "role": "value" },
+                      { "type": "text", "text": "%", "role": "value", "style": { "width": 14 } }
+                    ]
+                  },
+                  { "type": "progress", "source": "memory", "height": 3, "role": "meter" },
+                  { "type": "divider", "role": "separator" },
+                  { "type": "text", "text": "Activity Monitor", "open": "com.apple.ActivityMonitor", "role": "button" }
+                ]
+              }
+            }
+          }
+        ]
+        """#) + WidgetSet.sound.widgets
+
+    /// Whether `widgets` are the starter below the menu bar, as this release writes it or as 0.18.0 did.
+    static func isBelowMenuBarStarter(_ widgets: [[String: ConfigurationValue]]) -> Bool {
+        widgets == belowMenuBarStarter || widgets == earlierBelowMenuBarStarter
+    }
+
     /// Whether `document` is still the starter below the menu bar with Spaces, as the first launch writes it when it
     /// finds no window manager, such as before the login shell's PATH arrives: no other files, profiles or overrides,
     /// the starter's widgets, and the bar at its starting offset.
     static func isFirstLaunchSpacesStarter(_ document: [String: ConfigurationValue]) -> Bool {
         isFirstLaunchStarter(document) && document["workspaceSource"] == .string(WorkspaceSource.spaces.rawValue)
-            && (try? document["widgets"]?.decoded([[String: ConfigurationValue]].self)) == belowMenuBarStarter
+            && (try? document["widgets"]?.decoded([[String: ConfigurationValue]].self)).map(isBelowMenuBarStarter) == true
     }
 
     /// Whether `document` is still a starter as the first launch writes it, on the top edge or below the menu bar, with
@@ -524,7 +408,7 @@ struct SetupPreferences: Equatable, Codable, Sendable {
               document["widgetOverrides"] == nil, document["widgetOrder"] == nil, document["screens"] == nil,
               offset == nil || offset == .number(0), bar?["position"] != .string("bottom"),
               let widgets = try? document["widgets"]?.decoded([[String: ConfigurationValue]].self) else { return false }
-        return widgets == belowMenuBarStarter || isMenuBarStarter(widgets)
+        return isBelowMenuBarStarter(widgets) || isMenuBarStarter(widgets)
     }
 
     /// The widgets of the menu bar starter that repeat the macOS menu bar, its Control Center included.
@@ -580,13 +464,13 @@ struct SetupPreferences: Equatable, Codable, Sendable {
     /// A configuration that is still a starter bar becomes the starter of the chosen placement. A changed one keeps
     /// its widgets, except that below the menu bar it loses the menu bar starter's unchanged copies of what the menu
     /// bar shows.
-    private func starterChange(in configuration: Configuration, document: [String: ConfigurationValue]?, tracks: Bool) -> StarterChange {
+    private func starterChange(in configuration: Configuration, document: [String: ConfigurationValue]?) -> StarterChange {
         guard let document, let widgets = try? document["widgets"]?.decoded([[String: ConfigurationValue]].self) else {
             return StarterChange(configuration: configuration)
         }
         // Includes and packages can refer to these widgets from files setup doesn't edit, so their widgets stay.
         guard document["includes"] == nil, document["packages"] == nil else {
-            return StarterChange(configuration: configuration, isBelowMenuBarStarter: widgets == Self.belowMenuBarStarter)
+            return StarterChange(configuration: configuration, isBelowMenuBarStarter: Self.isBelowMenuBarStarter(widgets))
         }
         let ids = widgets.map(Self.id)
         func swap(to starter: [[String: ConfigurationValue]]) -> StarterChange? {
@@ -605,21 +489,21 @@ struct SetupPreferences: Equatable, Codable, Sendable {
         // changed, even when its file still lists a starter.
         let changed = Self.changedIDs(in: document)
         let isStarter = configuration.widgets.map(\.id) == ids && changed.isDisjoint(with: ids)
-        let presetBar = widgetSets.flatMap { added($0, tracks: tracks) }
-        if isStarter, !presetBar.isEmpty, Self.isMenuBarStarter(widgets) || widgets == Self.belowMenuBarStarter, let change = swap(to: presetBar) {
+        let presetBar = widgetSets.flatMap(added)
+        if isStarter, !presetBar.isEmpty, Self.isMenuBarStarter(widgets) || Self.isBelowMenuBarStarter(widgets), let change = swap(to: presetBar) {
             return change
         }
         if isStarter, placement == .belowMenuBar, Self.isMenuBarStarter(widgets), let change = swap(to: Self.belowMenuBarStarter) { return change }
         // On the top edge, only the first launch's own starter trades its Workspaces and System for the top edge's
         // starter; one the person changed keeps them.
-        if isStarter, Self.isFirstLaunchStarter(document), placement == .top, widgets == Self.belowMenuBarStarter,
+        if isStarter, Self.isFirstLaunchStarter(document), placement == .top, Self.isBelowMenuBarStarter(widgets),
            let change = swap(to: Self.menuBarStarter) { return change }
         let removed = placement != .belowMenuBar ? [] : widgets.filter { widget in
             let id = Self.id(widget)
             return Self.menuBarWidgetIDs.contains(id) && !changed.contains(id)
                 && Self.starters(remembered: Self.rememberedStarterClockFormats()).contains { $0.contains(widget) }
         }.map(Self.id)
-        return StarterChange(configuration: configuration, removed: removed, isBelowMenuBarStarter: widgets == Self.belowMenuBarStarter)
+        return StarterChange(configuration: configuration, removed: removed, isBelowMenuBarStarter: Self.isBelowMenuBarStarter(widgets))
     }
 
 
@@ -645,8 +529,7 @@ struct SetupPreferences: Equatable, Codable, Sendable {
         }
         if self == SetupPreferences() { return data }
         var document = try JSONDecoder().decode([String: ConfigurationValue].self, from: data)
-        let edits = try edits(in: configuration, document: document, widgetPackageIDs: loader.widgetPackageIDs,
-                              tokens: loader.document["tokens"]?.decoded([String: ConfigurationValue].self))
+        let edits = try edits(in: configuration, document: document, widgetPackageIDs: loader.widgetPackageIDs)
         if edits.isEmpty { return data }
         var ids = configuration.widgets.map(\.id)
         for edit in edits { document = try edit.applying(to: document, widgetIDs: &ids) }
@@ -669,9 +552,9 @@ struct SetupPreferences: Equatable, Codable, Sendable {
     }
 
     /// The edits that turn `configuration` into the bar setup builds. `document` is the configuration file's own
-    /// content, which tells whether its widgets are still a starter bar. `tokens` are the loaded configuration's tokens.
+    /// content, which tells whether its widgets are still a starter bar.
     func edits(in configuration: Configuration, document: [String: ConfigurationValue]? = nil,
-               widgetPackageIDs: [String: String] = [:], tokens: [String: ConfigurationValue]? = nil) throws -> [ConfigurationEdit] {
+               widgetPackageIDs: [String: String] = [:]) throws -> [ConfigurationEdit] {
         var edits: [ConfigurationEdit] = []
         if let themeEdit { edits.append(themeEdit) }
         if placement != .current {
@@ -689,9 +572,7 @@ struct SetupPreferences: Equatable, Codable, Sendable {
         if let keepWindowsClear {
             edits.append(ConfigurationEdit(action: .bar, properties: ["keepWindowsClear": .bool(keepWindowsClear)]))
         }
-        var tracks = true
-        if let tokens { tracks = (try? tokens["track"]?.decoded(BackgroundFill.self)) != nil }
-        var starter = starterChange(in: configuration, document: document, tracks: tracks)
+        var starter = starterChange(in: configuration, document: document)
         let presetIDs = widgetSets.flatMap(\.ids)
         // The preset's bar replaces a changed bar's widgets. Removing one that another file defines turns it off.
         if !widgetSets.isEmpty {
@@ -732,7 +613,7 @@ struct SetupPreferences: Equatable, Codable, Sendable {
                 order.insert(id, at: next(after: id) ?? order.endIndex)
                 continue
             }
-            for widget in added(set, tracks: tracks) {
+            for widget in added(set) {
                 let id = Self.id(widget)
                 // The set doesn't conflict, so a widget with this ID is this one.
                 if let existing = target.widgets.first(where: { $0.id == id }) {
@@ -770,18 +651,10 @@ struct SetupPreferences: Equatable, Codable, Sendable {
         return edits
     }
 
-    /// `set`'s widgets as setup adds them: Meetings turned off while it waits for Calendars, and rings without their
-    /// track when the `track` token isn't a fill, since the loader would reject it as a background.
-    private func added(_ set: WidgetSet, tracks: Bool) -> [[String: ConfigurationValue]] {
-        func withoutTrack(_ value: ConfigurationValue) -> ConfigurationValue {
-            switch value {
-            case let .object(object): .object(object.filter { $0.value != .string("@token.track") }.mapValues(withoutTrack))
-            case let .array(array): .array(array.map(withoutTrack))
-            default: value
-            }
-        }
-        return set.widgets.map { widget in
-            var widget = tracks ? widget : widget.mapValues(withoutTrack)
+    /// `set`'s widgets as setup adds them: Meetings turned off while it waits for Calendars.
+    private func added(_ set: WidgetSet) -> [[String: ConfigurationValue]] {
+        set.widgets.map { widget in
+            var widget = widget
             if set == .meetings && deferMeetings { widget["enabled"] = .bool(false) }
             return widget
         }

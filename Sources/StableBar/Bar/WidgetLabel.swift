@@ -9,11 +9,13 @@ struct WidgetLabel: Equatable, Sendable {
 }
 
 extension WidgetConfiguration {
-    /// This widget's label: a text widget's text, a clock's time at `date`, the frontmost app's
-    /// name (`activeApp`, else Desktop), or its script or provider output. The bar, the More widgets
-    /// menu and Diagnostics all read it here. Workspaces and spacers have no text.
+    /// This widget's label: a text widget's text, a clock's time at `date`, with its format's date and time parts
+    /// as the `date` and `time` fields, the frontmost app's name (`activeApp`, else Desktop), or its script or
+    /// provider output. The bar, the More widgets menu and Diagnostics all read it here. Workspaces and spacers have
+    /// no text.
     func label(output: ScriptOutput?, activeApp: String?, date: Date) -> WidgetLabel {
         var icon = self.icon
+        var fields = output?.fields ?? [:]
         let text: String
         switch content {
         case let .text(value):
@@ -23,6 +25,11 @@ extension WidgetConfiguration {
             formatter.dateFormat = format
             formatter.timeZone = timeZone.flatMap(TimeZone.init(identifier:)) ?? .autoupdatingCurrent
             text = formatter.string(from: date)
+            let parts = Self.clockFormatParts(format)
+            formatter.dateFormat = parts.date
+            fields["date"] = formatter.string(from: date)
+            formatter.dateFormat = parts.time
+            fields["time"] = formatter.string(from: date)
         case .activeApp:
             text = activeApp ?? "Desktop"
         case .controlCenter, .menuBarItems:
@@ -37,12 +44,71 @@ extension WidgetConfiguration {
         case .stableBar:
             text = ""
         case .workspaces, .appMenu, .appleMenu, .spacer:
-            return WidgetLabel(text: "", icon: icon, fields: output?.fields ?? [:])
+            return WidgetLabel(text: "", icon: icon, fields: fields)
         }
-        var fields = output?.fields ?? [:]
         fields["text"] = text
         fields["icon"] = icon ?? ""
         return WidgetLabel(text: text, icon: icon, fields: fields)
+    }
+
+    /// `format`'s date and time patterns. The time runs from its first hour, minute, second, day-period or zone letter
+    /// to its last, with the literal text that touches its end, such as `分`; the date is the rest, without the spaces between it and the time and the quoted text there that
+    /// touches the time or stands apart from the date, such as `'T'` or ` 'at' `. Quoted text that touches the date, such
+    /// as `'日'`, is part of it.
+    private static func clockFormatParts(_ format: String) -> (date: String, time: String) {
+        var quote: String.Index?
+        var quotes: [Range<String.Index>] = []
+        var time: Range<String.Index>?
+        for index in format.indices {
+            if format[index] == "'" {
+                if let start = quote {
+                    // `''` inside quoted text is an apostrophe, so quotes that touch are one.
+                    if let last = quotes.last, last.upperBound == start {
+                        quotes[quotes.count - 1] = last.lowerBound..<format.index(after: index)
+                    } else {
+                        quotes.append(start..<format.index(after: index))
+                    }
+                }
+                quote = quote == nil ? index : nil
+            } else if quote == nil, "abBhHkKmsSAzZOvVXx".contains(format[index]) {
+                time = (time?.lowerBound ?? index)..<format.index(after: index)
+            }
+        }
+        guard var time else { return (format, "") }
+        var suffix = time.upperBound
+        while suffix < format.endIndex, !format[suffix].isWhitespace, !(format[suffix].isASCII && format[suffix].isLetter) {
+            if let quoted = quotes.first(where: { $0.lowerBound == suffix }) {
+                if format[format.index(after: quoted.lowerBound)].isWhitespace { break }
+                suffix = quoted.upperBound
+            } else {
+                suffix = format.index(after: suffix)
+            }
+        }
+        time = time.lowerBound..<suffix
+        var end = time.lowerBound
+        while end > format.startIndex {
+            if format[format.index(before: end)].isWhitespace {
+                end = format.index(before: end)
+            } else if let quoted = quotes.first(where: { $0.upperBound == end }), end == time.lowerBound
+                        || quoted.lowerBound == format.startIndex || format[format.index(before: quoted.lowerBound)].isWhitespace {
+                end = quoted.lowerBound
+            } else {
+                break
+            }
+        }
+        var start = time.upperBound
+        while start < format.endIndex {
+            if format[start].isWhitespace {
+                start = format.index(after: start)
+            } else if let quoted = quotes.first(where: { $0.lowerBound == start }), start == time.upperBound
+                        || quoted.upperBound == format.endIndex || format[quoted.upperBound].isWhitespace {
+                start = quoted.upperBound
+            } else {
+                break
+            }
+        }
+        let date = [format[..<end], format[start...]].filter { !$0.isEmpty }.joined(separator: " ")
+        return (date, String(format[time]))
     }
 }
 

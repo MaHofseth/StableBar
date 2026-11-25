@@ -380,16 +380,17 @@ final class WindowClearance: NSObject {
                 }
             }
             guard let frame = ordinaryWindowFrame(window) else { continue }
-            let event = WindowAdjustment.Event.seen(frame: frame, target: frameClearOfBar(frame, displays: displays), at: Date())
+            let target = frameClearOfBar(frame, displays: displays)
+            let event = WindowAdjustment.Event.seen(frame: frame, target: target,
+                                                    canMove: target != nil && isSettable(kAXPositionAttribute, of: window),
+                                                    canResize: target != nil && isSettable(kAXSizeAttribute, of: window), at: Date())
             for effect in application.adjustments[window, default: WindowAdjustment()].handle(event) {
                 switch effect {
                 case .resize(var size):
-                    guard isSettable(kAXPositionAttribute, of: window), isSettable(kAXSizeAttribute, of: window),
-                          AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, AXValueCreate(.cgSize, &size)!) == .success
-                    else { continue }
-                    schedule(pid)
+                    if AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, AXValueCreate(.cgSize, &size)!) == .success {
+                        schedule(pid)
+                    }
                 case .move(var position):
-                    guard isSettable(kAXPositionAttribute, of: window) else { continue }
                     AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, AXValueCreate(.cgPoint, &position)!)
                 case .checkAgain(let date):
                     schedule(pid, at: date)

@@ -8,7 +8,8 @@ import Foundation
 struct WindowAdjustment: StateMachine {
     enum Event {
         /// A pass found the window at `frame`; `target` is its frame clear of the bar, nil when it already is.
-        case seen(frame: CGRect, target: CGRect?, at: Date)
+        /// `canMove` and `canResize` say whether Accessibility lets clearance change the window now.
+        case seen(frame: CGRect, target: CGRect?, canMove: Bool, canResize: Bool, at: Date)
     }
 
     enum Effect: Equatable {
@@ -40,11 +41,14 @@ struct WindowAdjustment: StateMachine {
 
     mutating func handle(_ event: Event) -> [Effect] {
         switch event {
-        case .seen(let frame, let target, let now):
+        case .seen(let frame, let target, let canMove, let canResize, let now):
             guard let target else {
                 mode = .clear
                 return []
             }
+            let resizes = target.size != frame.size
+            // Not a try: a busy app can answer that its window can't move, and it keeps its tries for when it can.
+            guard canMove, canResize || !resizes else { return [] }
             switch mode {
             case .changed(let from, let retries) where from == frame:
                 guard retries < Self.retryDelays.count else { return [] }
@@ -55,7 +59,7 @@ struct WindowAdjustment: StateMachine {
                 return [.checkAgain(at: retry)]
             default:
                 mode = .changed(from: frame, retries: mode.retries)
-                return [target.size == frame.size ? .move(target.origin) : .resize(target.size)]
+                return [resizes ? .resize(target.size) : .move(target.origin)]
             }
         }
     }

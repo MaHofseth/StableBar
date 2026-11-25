@@ -70,6 +70,22 @@ private let start = Date(timeIntervalSinceReferenceDate: 0)
     #expect(adjustment.handle(.seen(frame: dragged, target: target, at: start.addingTimeInterval(0.3))) == [.move(target.origin)])
 }
 
+@Test func aWindowMovedElsewhereAfterTheLastTryIsAdjustedAtOnce() {
+    var adjustment = WindowAdjustment()
+    var now = start
+    _ = adjustment.handle(.seen(frame: filled, target: clear, at: now))
+    for delay in WindowAdjustment.retryDelays {
+        now = now.addingTimeInterval(0.15)
+        _ = adjustment.handle(.seen(frame: filled, target: clear, at: now))
+        now = now.addingTimeInterval(delay)
+        _ = adjustment.handle(.seen(frame: filled, target: clear, at: now))
+    }
+    #expect(adjustment.handle(.seen(frame: filled, target: clear, at: now.addingTimeInterval(0.15))) == [])
+    let dragged = CGRect(x: 200, y: 10, width: 500, height: 300)
+    let target = CGRect(x: 200, y: 40, width: 500, height: 300)
+    #expect(adjustment.handle(.seen(frame: dragged, target: target, at: now.addingTimeInterval(1))) == [.move(target.origin)])
+}
+
 @Test func triesStartAgainOnceTheWindowIsClear() {
     var adjustment = WindowAdjustment()
     var now = start

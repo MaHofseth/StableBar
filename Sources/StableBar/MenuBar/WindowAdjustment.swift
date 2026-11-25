@@ -46,12 +46,12 @@ struct WindowAdjustment: StateMachine {
                 return []
             }
             switch mode {
-            case .changed(frame, let retries):
+            case .changed(let from, let retries) where from == frame:
                 guard retries < Self.retryDelays.count else { return [] }
                 let retry = now.addingTimeInterval(Self.retryDelays[retries])
                 mode = .waiting(from: frame, until: retry, retries: retries + 1)
                 return [.checkAgain(at: retry)]
-            case .waiting(frame, let retry, _) where now < retry:
+            case .waiting(let from, let retry, _) where from == frame && now < retry:
                 return [.checkAgain(at: retry)]
             default:
                 mode = .changed(from: frame, retries: mode.retries)

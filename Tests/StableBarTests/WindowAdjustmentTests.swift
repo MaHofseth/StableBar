@@ -130,3 +130,10 @@ private func seen(_ frame: CGRect, _ target: CGRect?, at time: Date, canMove: Bo
     let target = CGRect(x: 100, y: 40, width: 600, height: 400)
     #expect(adjustment.handle(seen(window, target, at: start, canResize: false)) == [.move(target.origin)])
 }
+
+@Test func aWindowThatCantMoveIsShrunkWhenThatAloneClearsTheBar() {
+    // A bar at the bottom: shrinking a filled window keeps its top and lifts its bottom clear of the bar.
+    var adjustment = WindowAdjustment()
+    let aboveBar = CGRect(x: 0, y: 0, width: 1024, height: 672)
+    #expect(adjustment.handle(seen(filled, aboveBar, at: start, canMove: false)) == [.resize(aboveBar.size)])
+}

@@ -47,8 +47,9 @@ struct WindowAdjustment: StateMachine {
                 return []
             }
             let resizes = target.size != frame.size
-            // Not a try: a busy app can answer that its window can't move, and it keeps its tries for when it can.
-            guard canMove, canResize || !resizes else { return [] }
+            // Not a try: a busy app can answer that its window can't change, and it keeps its tries for when it can.
+            // Resizing keeps the window's top-left corner, so it needs to move unless that already clears the bar.
+            guard canResize || !resizes, canMove || target.origin == frame.origin else { return [] }
             switch mode {
             case .changed(let from, let retries) where from == frame:
                 guard retries < Self.retryDelays.count else { return [] }

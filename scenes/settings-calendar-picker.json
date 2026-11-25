@@ -53,7 +53,8 @@
         "title": "Design review",
         "start": "09:55",
         "end": "10:30",
-        "minutes": "14"
+        "minutes": "14",
+        "joinCommand": "open 'https://meet.google.com/abc-defg-hij'"
       }
     }
   },

@@ -62,8 +62,9 @@ struct MixerState: StateMachine, Equatable {
         /// An output device's UID, or nil for the default output.
         case setOutput(String, String?)
         /// The app's tap couldn't start or play as `Tap` planned: it plays as macOS does until its processes or its
-        /// output change. A failure of a tap since replaced by one with other processes or another output changes nothing.
-        /// The tap stops after the work already queued for it, which may have started the same plan again.
+        /// output change. A failure of a plan since changed to other processes or another output changes nothing: the work
+        /// queued for the change reports its own. The tap stops after the work already queued for it, which may have
+        /// started the same plan again.
         case tapFailed(String, Tap)
     }
 
@@ -71,7 +72,11 @@ struct MixerState: StateMachine, Equatable {
         case askPermission
         case save([String: Setting])
         case stopTap(String)
+        /// Starts the app's tap. One already running for the app stops once the new one mutes the app, so the app never
+        /// plays at its full volume between them, or once the new one fails to start.
         case startTap(String, Tap)
+        /// Changes the processes a running tap mutes and plays, without stopping it.
+        case setProcesses(String, [UInt32])
         case setGain(String, Double)
         case setPlaying(String, Bool)
     }
@@ -147,17 +152,17 @@ struct MixerState: StateMachine, Equatable {
         return [.save(settings), .askPermission]
     }
 
-    /// Stops the taps no longer wanted or wanted elsewhere, then starts or updates the rest.
+    /// Stops the taps no longer wanted, replaces those wanted on another output, and updates the rest.
     private mutating func tapEffects() -> [Effect] {
         let wanted = wantedTaps()
         var effects: [Effect] = []
-        for (id, tap) in taps.sorted(by: { $0.key < $1.key })
-        where wanted[id].map({ $0.processes != tap.processes || $0.output != tap.output }) ?? true {
+        for id in taps.keys.sorted() where wanted[id] == nil {
             effects.append(.stopTap(id))
             taps[id] = nil
         }
         for (id, tap) in wanted.sorted(by: { $0.key < $1.key }) {
-            if let running = taps[id] {
+            if let running = taps[id], running.output == tap.output {
+                if running.processes != tap.processes { effects.append(.setProcesses(id, tap.processes)) }
                 if running.gain != tap.gain { effects.append(.setGain(id, tap.gain)) }
                 if running.playing != tap.playing { effects.append(.setPlaying(id, tap.playing)) }
             } else {

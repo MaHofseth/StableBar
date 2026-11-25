@@ -83,9 +83,20 @@ final class AudioMixer {
                 }
             case let .stopTap(id): onTaps { $0.byApp.removeValue(forKey: id)?.stop() }
             case let .startTap(id, tap):
-                onTaps(failing: (id, tap)) { taps in
+                onTaps(failing: (id, tap)) { [weak self] taps in
                     guard #available(macOS 14.2, *) else { return }
-                    taps.byApp[id] = try AppAudioTap(tap)
+                    let replaced = taps.byApp.removeValue(forKey: id)
+                    defer { replaced?.stop() }
+                    taps.byApp[id] = try AppAudioTap(tap) { failed in
+                        Task { @MainActor in self?.tapFailed(failed, of: id) }
+                    }
+                }
+            case let .setProcesses(id, processes):
+                onTaps(failing: state.taps[id].map { (id, $0) }) { taps in
+                    guard #available(macOS 14.2, *) else { return }
+                    // The start failed, and `MixerState` ignores that failure now that the plan has other processes.
+                    guard let tap = taps.byApp[id] else { throw CommandFailure(message: "The app’s tap isn’t running.") }
+                    try tap.setProcesses(processes)
                 }
             case let .setGain(id, gain): onTaps { $0.byApp[id]?.setGain(gain) }
             case let .setPlaying(id, playing):
@@ -105,6 +116,15 @@ final class AudioMixer {
             } catch {
                 if let plan { perform(state.handle(.tapFailed(plan.id, plan.tap))) }
             }
+        }
+    }
+
+    /// Ends the app's tap as a failed call would, for a start the tap made on its own, unless another tap has replaced it
+    /// or a later start succeeded.
+    private func tapFailed(_ tap: AppAudioTap, of id: String) {
+        onTaps(failing: state.taps[id].map { (id, $0) }) { taps in
+            guard taps.byApp[id] === tap, tap.lastStartFailed else { return }
+            throw CommandFailure(message: "Could not play the app’s sound.")
         }
     }
 }

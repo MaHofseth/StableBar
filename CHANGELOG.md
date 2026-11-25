@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.19.0](https://github.com/stablebox/StableBar/compare/v0.18.0...v0.19.0) (2026-11-25)
+
+### Features
+
+* add a Quick toggles widget, a Control Center-style panel of switches and tools by @Seb-GRAF ([d949a89](https://github.com/stablebox/StableBar/commit/d949a8940f6b50a622f769bc372de859948d378d))
+* add KiwiDesk as a workspace source by @M4n0x ([0da5d89](https://github.com/stablebox/StableBar/commit/0da5d897a357e6805148bb485f76245a53c82354))
+* change the whole look in Appearance and set the bar's margin per axis ([#926](https://github.com/stablebox/StableBar/issues/926)) by @Seb-GRAF ([82156aa](https://github.com/stablebox/StableBar/commit/82156aac35b9567b31a49d2c773ce093a90eba58))
+* control each app's sound, the input device and music from the Sound widget by @Seb-GRAF ([186d7db](https://github.com/stablebox/StableBar/commit/186d7db08b1bd2db145e2377b8d9313d9cad5d6a))
+* describe KiwiDesk workspaces and list KiwiDesk with the other window managers by @M4n0x ([1149849](https://github.com/stablebox/StableBar/commit/11498496f8d92cb9fc367cd8d80862ae6085cdfc))
+* follow KiwiDesk's events and switch Spaces from workspace widgets by @M4n0x ([383e2de](https://github.com/stablebox/StableBar/commit/383e2de9562ed57499da4f8b5626094b0429fdad))
+* give setup and the starter only widgets and displays Get Widgets and Settings offer ([#916](https://github.com/stablebox/StableBar/issues/916)) by @Seb-GRAF ([217ae14](https://github.com/stablebox/StableBar/commit/217ae14f6b84be27e9e8be4be8df30dd11f17f2d))
+* let a popup control what plays in any app, with the timeline and 15-second skips by @Seb-GRAF ([3abe2da](https://github.com/stablebox/StableBar/commit/3abe2da888c01d8d370b21f349107c67bf03ca40))
+* list only the window managers found on this Mac in Settings by @M4n0x ([2137f5d](https://github.com/stablebox/StableBar/commit/2137f5d8d1b4ae1000a6be986b4b63e6ece23f23))
+* post your bar's image and link to social networks, and draw its glass as on screen ([#922](https://github.com/stablebox/StableBar/issues/922)) by @Seb-GRAF ([099250d](https://github.com/stablebox/StableBar/commit/099250dd1ec384c7a76ffd54cc679a1a5c45de1b))
+* read KiwiDesk's Spaces and windows for workspace widgets by @M4n0x ([e633cba](https://github.com/stablebox/StableBar/commit/e633cba3d470ba6bd8fea18ff1805c9dd14b54f6))
+* replace the included themes and rebuild setup around them by @Seb-GRAF ([e30dc67](https://github.com/stablebox/StableBar/commit/e30dc67c86f542fce739b1a1658babededb4a605))
+* set the space between the icons Menu bar items shows on the bar by @Seb-GRAF ([00fa4ce](https://github.com/stablebox/StableBar/commit/00fa4ce004c1f10752930b5cef310860184fafc3))
+
+### Bug Fixes
+
+* address CodeRabbit's review of the sound controls by @Seb-GRAF ([0ac54f8](https://github.com/stablebox/StableBar/commit/0ac54f8aa98e411d03febbdc1804dccda6395b48))
+* address cubic's review of the tooltip slider by @M4n0x ([8523b0f](https://github.com/stablebox/StableBar/commit/8523b0fc082cae0ff8252aacd2dbd10896db27ca))
+* address the review of the sound controls by @Seb-GRAF ([40db99c](https://github.com/stablebox/StableBar/commit/40db99c38aa404da55c0bf435d200cace182c971))
+* don't restart workspaces for a launch seen just before they stopped by @M4n0x ([d52aa6a](https://github.com/stablebox/StableBar/commit/d52aa6a8562371cb60465d80533fee5fd42e6787))
+* draw live menu bar items without the menu bar's opaque background by @Seb-GRAF ([815faec](https://github.com/stablebox/StableBar/commit/815faec65834dd6677ffbb81b4bdd7bf97626ecd))
+* draw StableBar's bundled icon in Share My Bar and every other view by @M4n0x ([805e945](https://github.com/stablebox/StableBar/commit/805e945b85133dd1da75338e57094ab26eb31082)), closes [#895](https://github.com/stablebox/StableBar/issues/895)
+* drop the earlier starter's bar sizes so each theme draws with its own by @Seb-GRAF ([5dafa75](https://github.com/stablebox/StableBar/commit/5dafa75a8e4f2bee88b52c703e68030ae7bf6307))
+* keep a growing popup from flashing a scroll bar by @M4n0x ([edb3344](https://github.com/stablebox/StableBar/commit/edb3344b506db1dd2e13fac778045e3f748f6c07)), closes [#883](https://github.com/stablebox/StableBar/issues/883)
+* keep a themed slider in a hover tooltip to a line of text by @M4n0x ([d56519b](https://github.com/stablebox/StableBar/commit/d56519be597645fbb674615479d2b492abbd277a)), closes [#880](https://github.com/stablebox/StableBar/issues/880)
+* keep a tooltip whose controls draw nothing from crashing by @M4n0x ([2c080aa](https://github.com/stablebox/StableBar/commit/2c080aa940cd0acc2656af0c44c5d280ece92a8e))
+* keep each package's widgets on that package's own templates ([#824](https://github.com/stablebox/StableBar/issues/824)) by @Jonathanm10 ([05c7252](https://github.com/stablebox/StableBar/commit/05c725285b4f37af25b712e264e8c60ed7f82f72)), closes [#805](https://github.com/stablebox/StableBar/issues/805)
+* keep the icon's 512-pixel bitmap as its image's only representation by @M4n0x ([d876411](https://github.com/stablebox/StableBar/commit/d8764118c494755725ee803f48023702edd06e4c)), closes [#895](https://github.com/stablebox/StableBar/issues/895)
+* leave out a slider's ticks unless they stand 6 points apart by @M4n0x ([25cc3cd](https://github.com/stablebox/StableBar/commit/25cc3cd4ede531ab29b57ba1272a6a0bc647a30c))
+* leave out a slider's ticks when its steps would run together by @M4n0x ([c9d487b](https://github.com/stablebox/StableBar/commit/c9d487b94a97ad6f42499a54b2ce987cca4c0968))
+* leave StableBar's own mixer devices out of the Sound widget's device lists by @Seb-GRAF ([db1d7b3](https://github.com/stablebox/StableBar/commit/db1d7b322eb88dbf0beabe33cdc4b2be207d7527))
+* let a mouse click answer the Location prompt from the Quick toggles ([#918](https://github.com/stablebox/StableBar/issues/918)) by @Seb-GRAF ([6b9117f](https://github.com/stablebox/StableBar/commit/6b9117f8f064fcb60f709b2a77d3151dc388e324))
+* move a plain slider one step per arrow key, and keep its ticks before macOS 26 by @M4n0x ([b54212d](https://github.com/stablebox/StableBar/commit/b54212d971a22bcaad4021694b3faab7920e72f5))
+* open SwiftUI menu bar panels from the bar on macOS 27 by @M4n0x ([50fae9e](https://github.com/stablebox/StableBar/commit/50fae9e39d6cf3c534d2402f162870a2d32afa22)), closes [#798](https://github.com/stablebox/StableBar/issues/798)
+* plan the Mac's real uninstall steps in Settings and quit once they're done by @M4n0x ([6d67a44](https://github.com/stablebox/StableBar/commit/6d67a44b125e529e5154f008ccd83ead2deea332))
+* queue now-playing commands with the widget's other actions by @Seb-GRAF ([e5365b9](https://github.com/stablebox/StableBar/commit/e5365b988a21de59ca63f124f6bd57e3182b0a16))
+* reconnect workspaces at once when a menu bar window manager launches by @M4n0x ([76771ef](https://github.com/stablebox/StableBar/commit/76771efe45dc934b6104acaba2c075afa3cbca52))
+* rescan window managers once the login shell's PATH arrives by @M4n0x ([cba21b2](https://github.com/stablebox/StableBar/commit/cba21b21e7cbb414861585cdd735d21b74a1489d))
+* share a stuck window manager lookup and queue a rescan that comes mid-scan by @M4n0x ([c86e372](https://github.com/stablebox/StableBar/commit/c86e372492126fbc6ebfa7147bcd1eceb95bcf9a))
+* stop an app's tap after the queued work when one of its plans fails by @Seb-GRAF ([b894cb7](https://github.com/stablebox/StableBar/commit/b894cb7d4ee9292fa9e85737049c92aaf51143b3))
+* take the icon's 512-pixel bitmap from the file rather than through AppKit by @M4n0x ([bfac648](https://github.com/stablebox/StableBar/commit/bfac64866375cacb66c767a9fdb0951b34368db4)), closes [#895](https://github.com/stablebox/StableBar/issues/895)
+* turn on Sound's details after its click was set to nothing, and qualify the docs by @Seb-GRAF ([4263bec](https://github.com/stablebox/StableBar/commit/4263bec89f5c12f87d2b47e2ab4d168b6876832f))
+* turn on Sound's details popup in setup, the starter and earlier bars by @Seb-GRAF ([5e1a8ef](https://github.com/stablebox/StableBar/commit/5e1a8efb61edf01b2282ae407451e96dd5f4cfdf))
+* undo StableBar's changes when Homebrew uninstalls it ([#898](https://github.com/stablebox/StableBar/issues/898)) by @M4n0x ([bb90c02](https://github.com/stablebox/StableBar/commit/bb90c0230db05cce97d7c88b4967b788770f3b79)), closes [#896](https://github.com/stablebox/StableBar/issues/896)
+* wrap a scene's hover tooltip at the live tooltip's width by @M4n0x ([82818ce](https://github.com/stablebox/StableBar/commit/82818ce285cda72fd63e7a2b6a84acb0e3e771ea))
+
 ## [0.18.0](https://github.com/stablebox/StableBar/compare/v0.17.0...v0.18.0) (2026-11-20)
 
 ### Features

@@ -12,8 +12,10 @@ struct WindowAdjustment: StateMachine {
         case seen(frame: CGRect, target: CGRect?, canMove: Bool, canResize: Bool, at: Date)
     }
 
+    /// After a resize or a move, the owner looks at the window again, whether or not the change took: a window found at
+    /// the same frame counts as a try.
     enum Effect: Equatable {
-        /// Resizes the window in place; the owner then looks at it again.
+        /// Resizes the window in place.
         case resize(CGSize)
         case move(CGPoint)
         /// Looks at the window again at this time.

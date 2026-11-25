@@ -387,11 +387,11 @@ final class WindowClearance: NSObject {
             for effect in application.adjustments[window, default: WindowAdjustment()].handle(event) {
                 switch effect {
                 case .resize(var size):
-                    if AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, AXValueCreate(.cgSize, &size)!) == .success {
-                        schedule(pid)
-                    }
+                    AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, AXValueCreate(.cgSize, &size)!)
+                    schedule(pid)
                 case .move(var position):
                     AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, AXValueCreate(.cgPoint, &position)!)
+                    schedule(pid)
                 case .checkAgain(let date):
                     schedule(pid, at: date)
                 }

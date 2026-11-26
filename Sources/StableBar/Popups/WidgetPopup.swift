@@ -282,7 +282,7 @@ final class WidgetPopup {
         openTooltip(id: widget.id, style: WidgetStyle(background: widget.popupBackground).inheriting(widget.style), defaults: defaults, store: store, anchor: anchor,
                     maxWidth: anchor.window!.screen!.visibleFrame.width - 16, alignment: .leading, sidePadding: sidePadding,
                     ignoresMouseEvents: false) { _ in row() }
-        // Unless the bar has the keyboard already, as under `--focus`.
+        // Leaves the keyboard with the app unless the bar has it, as under `--focus`.
         panel!.leavesKeyboard = !anchor.window!.isKeyWindow
         self.store = store
         watchEvents(anchor: anchor, pinnable: false)

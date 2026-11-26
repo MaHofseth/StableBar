@@ -33,6 +33,16 @@ import Testing
     menu.toggle(AppMenu.popup([]), widget: widget, defaults: defaults, store: store, anchor: title)
     defer { menu.close() }
     #expect(try !#require(presented.last).canBecomeKey, "A menu opened from the tray")
+    let menuPanel = try #require(presented.last)
+    let row = NSView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+    menuPanel.contentView!.addSubview(row)
+    // With nothing to read, the submenu opens empty, and no other app is asked for anything.
+    let appMenu = AppMenu(checkAccess: { true }, readAttribute: { _, _ in nil })
+    appMenu.openSubmenu(AXUIElementCreateApplication(1), beside: row) { _ in EmptyView() }
+    defer { appMenu.closeSubmenus(after: nil) }
+    let submenu = try #require(menuPanel.childWindows?.compactMap { $0 as? PopupPanel }.last { $0.title == "App submenu" })
+    #expect(!submenu.canBecomeKey, "A submenu of a menu opened from the tray")
+    appMenu.closeSubmenus(after: nil)
     menu.close()
     tray.close()
 

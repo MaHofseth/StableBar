@@ -635,8 +635,11 @@ final class WidgetPopup {
     private func watchEvents(anchor: NSView, pinnable: Bool) {
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .keyDown]) { [weak self] event in
             let handled = MainActor.assumeIsolated {
-                // A window of the popup's own, such as a chooser's panel, handles its events like the popup.
+                // A window of the popup's own, such as a chooser's panel, handles its events like the popup. A click
+                // further up counts as inside too, as in a submenu of a menu opened from a tray, while Escape there still
+                // closes the tray: the submenu has no handler for it.
                 guard let self, event.window?.parent == nil || event.window?.parent !== self.panel else { return false }
+                if event.type != .keyDown, event.window?.isDescendant(of: self.panel) == true { return false }
                 if event.type == .keyDown {
                     if event.keyCode == 53 {
                         let navigation = self.panel!.navigation
@@ -910,6 +913,14 @@ final class WidgetPopup {
 
     func removeAnchor(_ view: NSView) {
         if anchor === view || hoveredAnchor === view { close() }
+    }
+}
+
+private extension NSWindow {
+    /// Whether this window is a child of `window`, directly or through other windows.
+    func isDescendant(of window: NSWindow?) -> Bool {
+        guard let parent else { return false }
+        return parent === window || parent.isDescendant(of: window)
     }
 }
 

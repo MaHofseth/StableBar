@@ -25,8 +25,8 @@ func aClickInASubmenuLeavesTheTrayItsMenuOpenedFromOpen(closing: String) async t
     await bar.settle()
     let widget = configuration.widgets[0]
     let defaults = configuration.popupDefaults.popupStyle(over: configuration.defaults)
-    tray.showRow(widget: widget, defaults: defaults, store: store, anchor: try #require(bar.anchors(widget.id).first),
-                 sidePadding: 10) { Text("File") }
+    let anchor = try #require(bar.anchors(widget.id).first)
+    tray.showRow(widget: widget, defaults: defaults, store: store, anchor: anchor, sidePadding: 10) { Text("File") }
     defer { tray.close() }
     let title = NSView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
     try #require(trayPanel).contentView!.addSubview(title)
@@ -44,23 +44,26 @@ func aClickInASubmenuLeavesTheTrayItsMenuOpenedFromOpen(closing: String) async t
     try #require(menuPanel).addChildWindow(submenu, ordered: .above)
     defer { submenu.close() }
     #expect(submenu.parent?.parent === trayPanel)
+    // The events go to the tray's handler alone. `NSApp.sendEvent` would reach every open popup in the test process,
+    // closing those that tests running alongside this one have open.
     func click(in window: NSWindow) throws {
-        NSApp.sendEvent(try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: NSPoint(x: 50, y: 50), modifierFlags: [],
-            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)))
+        let event = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: NSPoint(x: 50, y: 50), modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        #expect(!tray.consumes(event, anchor: anchor))
     }
 
     try click(in: submenu)
-    #expect(tray.isOpen)
-    #expect(menu.isOpen)
+    try #require(tray.isOpen)
 
     let elsewhere = window()
     defer { elsewhere.close() }
     if closing == "a click elsewhere" {
         try click(in: elsewhere)
     } else {
-        NSApp.sendEvent(try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        let escape = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
             windowNumber: submenu.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
-            isARepeat: false, keyCode: 53)))
+            isARepeat: false, keyCode: 53))
+        #expect(tray.consumes(escape, anchor: anchor))
     }
     #expect(!tray.isOpen, "Closed by \(closing)")
 }
